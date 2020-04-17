@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <unistd.h>
+#include <math.h>
 
 #define FS_MAGIC           0xf0f03410
 #define INODES_PER_BLOCK   128
@@ -36,6 +37,14 @@ union fs_block {
 
 int fs_format()
 {
+	union fs_block block;
+	int ninodeblocks = ceil(.1 * disk_size());
+	block.super.magic = FS_MAGIC;
+	block.super.nblocks = disk_size();
+	block.super.ninodeblocks = ninodeblocks;
+	block.super.ninodes = INODES_PER_BLOCK * ninodeblocks;
+
+
 	return 0;
 }
 
@@ -90,9 +99,7 @@ void fs_debug()
 					int indirect_size = sizeof(indirect_block.pointers)/sizeof(int*);
 					print_array(indirect_block.pointers, indirect_size);
 				}
-					
 			}
-
 		}
 	}	
 }
