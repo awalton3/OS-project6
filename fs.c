@@ -35,17 +35,37 @@ union fs_block {
 	char data[DISK_BLOCK_SIZE];
 };
 
+/*int ceiling(double n){
+	double rem = fmod(n, 1);
+	if (rem == 0)
+		return (int)n;
+	else
+		return (int)n + 1;
+}*/
+
 int fs_format()
 {
 	union fs_block block;
-	int ninodeblocks = ceil(.1 * disk_size());
+	//Check if already mounted
+	disk_read(0, block.data);
+	if (block.super.magic == FS_MAGIC)
+		return 0;
+
+	//Create superblock
+	int ninodeblocks = ceil(.1 * (double)disk_size());
 	block.super.magic = FS_MAGIC;
+	printf(" Magic num right after assign is %d\n", block.super.magic);
 	block.super.nblocks = disk_size();
 	block.super.ninodeblocks = ninodeblocks;
 	block.super.ninodes = INODES_PER_BLOCK * ninodeblocks;
-
-
-	return 0;
+	disk_write(0, block.data);
+	printf(" Magic num right after write is %d\n", block.super.magic);
+	
+	//Clear the inode table
+	for(int i=0; i< block.super.ninodes; i++){
+		block.inode[i].isvalid = 0;
+	}
+	return 1;
 }
 
 void print_array(int array[], int size){
