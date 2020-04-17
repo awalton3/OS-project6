@@ -39,16 +39,62 @@ int fs_format()
 	return 0;
 }
 
+void print_array(int array[], int size){
+	for(int i=0; i< size;  i++){
+		if(array[i] == 0){ //points to a null block
+			continue;
+		}
+		printf("%d ",array[i]);
+	}
+	printf("\n");
+}
+
 void fs_debug()
 {
 	union fs_block block;
+	union fs_block indirect_block;
 
 	disk_read(0,block.data);
+	int magic = block.super.magic;
+
 
 	printf("superblock:\n");
+	int validSuperblock = (magic == FS_MAGIC);
+	if(validSuperblock)
+		printf("    magic number is valid\n");
+	else{
+		printf("    magic number is not valid\n");
+		return;
+	}
 	printf("    %d blocks\n",block.super.nblocks);
 	printf("    %d inode blocks\n",block.super.ninodeblocks);
 	printf("    %d inodes\n",block.super.ninodes);
+
+	//Define inodes
+	for(int i=1; i<block.super.ninodeblocks; i++){
+		disk_read(i, block.data);
+		for(int j=0; j<INODES_PER_BLOCK; j++){
+			struct fs_inode inode = block.inode[(i-1)*INODES_PER_BLOCK + j];
+			if(inode.isvalid){
+				printf("inode %d:\n", j);
+				printf("    size: %d bytes\n", inode.size);
+				int direct_size = sizeof(inode.direct)/sizeof(int); 
+				if(direct_size > 0){
+					printf("    direct blocks: ");
+					print_array(inode.direct, direct_size);
+				}
+				if(inode.indirect){
+					printf("    indirect block: %d\n", inode.indirect);
+					printf("    indirect data blocks: ");
+					disk_read(inode.indirect, indirect_block.data);
+					int indirect_size = sizeof(indirect_block.pointers)/sizeof(int*);
+					print_array(indirect_block.pointers, indirect_size);
+				}
+					
+			}
+
+		}
+	}	
 }
 
 int fs_mount()
