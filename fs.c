@@ -35,13 +35,7 @@ union fs_block {
 	char data[DISK_BLOCK_SIZE];
 };
 
-/*int ceiling(double n){
-	double rem = fmod(n, 1);
-	if (rem == 0)
-		return (int)n;
-	else
-		return (int)n + 1;
-}*/
+int *bitmap;
 
 int fs_format()
 {
@@ -54,28 +48,33 @@ int fs_format()
 	//Create superblock
 	int ninodeblocks = ceil(.1 * (double)disk_size());
 	block.super.magic = FS_MAGIC;
-	printf(" Magic num right after assign is %d\n", block.super.magic);
 	block.super.nblocks = disk_size();
 	block.super.ninodeblocks = ninodeblocks;
 	block.super.ninodes = INODES_PER_BLOCK * ninodeblocks;
+	printf("Before the write in format\n");
 	disk_write(0, block.data);
-	printf(" Magic num right after write is %d\n", block.super.magic);
+	printf("After the write in format\n");
 	
 	//Clear the inode table
-	for(int i=0; i< block.super.ninodes; i++){
+	for(int i=1; i< block.super.ninodes; i++){
 		block.inode[i].isvalid = 0;
+		disk_write(i/INODES_PER_BLOCK +1, block.data);
 	}
+	printf("Cleared inode table\n");
 	return 1;
 }
 
 void print_array(int array[], int size){
-	for(int i=0; i< size;  i++){
+	for(int i=0; i< size; i++){
 		if(array[i] == 0){ //points to a null block
 			continue;
 		}
 		printf("%d ",array[i]);
 	}
 	printf("\n");
+}
+int check_magic(int magic){
+	return (magic == FS_MAGIC);
 }
 
 void fs_debug()
@@ -102,7 +101,7 @@ void fs_debug()
 	//Define inodes
 	for(int i=1; i<block.super.ninodeblocks; i++){
 		disk_read(i, block.data);
-		for(int j=0; j<INODES_PER_BLOCK; j++){
+		for(int j=1; j<=INODES_PER_BLOCK; j++){
 			struct fs_inode inode = block.inode[(i-1)*INODES_PER_BLOCK + j];
 			if(inode.isvalid){
 				printf("inode %d:\n", j);
@@ -126,11 +125,50 @@ void fs_debug()
 
 int fs_mount()
 {
-	return 0;
+	//Check if file system present
+	union fs_block block;
+	disk_read(0, block.data);
+	if (!check_magic(block.super.magic)){
+		return 0;
+	}
+
+	//Build free block bitmap
+	int nblocks = block.super.nblocks -1;
+	bitmap = malloc(nblocks*sizeof(int)); //begin with all free (1)
+	//Initialize to free - 1s
+	for(int i=0; i<nblocks; i++){
+		bitmap[i] = 1;
+	}
+
+	//Prepare the File System
+	
+	//Clear Inodes
+	for(int i=1; i<=block.super.ninodes; i++){
+		for(int j=0; j<POINTERS_PER_INODE; j++){
+			block.inode->direct[j] = 0;
+		}
+		block.inode->indirect = 0;
+		disk_write(i/INODES_PER_BLOCK + 1, block.data);
+	}
+
+	return 1;
 }
 
 int fs_create()
 {
+	union fs_block block;
+	disk_read(0, block.data);
+	int ninodes = block.super.ninodes;
+	
+	for(int i=1; i<=ninodes; i++){
+		disk_read(i/INODES_PER_BLOCK +1, block.data);
+		if(!block.inode[i].isvalid){ //not valid means its free to use
+			block.inode[i].isvalid = 1;
+			block.inode[i].size = 0;
+			disk_write(i/INODES_PER_BLOCK + 1, block.data);
+			return i;
+		}
+	}
 	return 0;
 }
 
