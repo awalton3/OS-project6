@@ -133,23 +133,49 @@ int fs_mount()
 	}
 
 	//Build free block bitmap
-	int nblocks = block.super.nblocks -1;
+	int nblocks = block.super.nblocks;
 	bitmap = malloc(nblocks*sizeof(int)); //begin with all free (1)
+
+	bitmap[0] = 0;	// Super block is never free
 	//Initialize to free - 1s
-	for(int i=0; i<nblocks; i++){
+	for(int i=1; i<nblocks; i++){
 		bitmap[i] = 1;
+	}
+	printf("Initialized bitmap\n");
+
+	int ninodes = block.super.ninodes;
+	for(int i = 1; i < ninodes; i++) {
+		//printf("first for loop\n");
+		disk_read(i/INODES_PER_BLOCK +1, block.data); // Ask about "zero cannot be a valid inumber"
+
+		if (!block.inode[i].isvalid)
+			continue;
+
+		for (int j = 0; j < POINTERS_PER_INODE; j++) {
+			printf("second for loop\n");
+			printf("%d\n", block.inode[i].size);
+			printf("%d\n", block.inode[i].direct[j]);
+			bitmap[block.inode[i].direct[j]] = 0; // Set block to not free in free block bitmap
+		}
+
+		bitmap[block.inode[i].indirect] = 0;
+		disk_read(block.inode[i].indirect, block.data);
+		for (int k = 0; k < POINTERS_PER_BLOCK; k++) {
+			printf("third for loop\n");
+			bitmap[block.pointers[k]] = 0;
+		}
 	}
 
 	//Prepare the File System
 	
 	//Clear Inodes
-	for(int i=1; i<=block.super.ninodes; i++){
-		for(int j=0; j<POINTERS_PER_INODE; j++){
-			block.inode->direct[j] = 0;
-		}
-		block.inode->indirect = 0;
-		disk_write(i/INODES_PER_BLOCK + 1, block.data);
-	}
+	// for(int i=1; i<=block.super.ninodes; i++){
+	// 	for(int j=0; j<POINTERS_PER_INODE; j++){
+	// 		block.inode->direct[j] = 0;
+	// 	}
+	// 	block.inode->indirect = 0;
+	// 	disk_write(i/INODES_PER_BLOCK + 1, block.data);
+	// }
 
 	return 1;
 }
