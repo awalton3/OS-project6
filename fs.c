@@ -37,33 +37,6 @@ union fs_block {
 
 int *bitmap;
 
-int fs_format()
-{
-	union fs_block block;
-	//Check if already mounted
-	disk_read(0, block.data);
-	if (block.super.magic == FS_MAGIC)
-		return 0;
-
-	//Create superblock
-	int ninodeblocks = ceil(.1 * (double)disk_size());
-	block.super.magic = FS_MAGIC;
-	block.super.nblocks = disk_size();
-	block.super.ninodeblocks = ninodeblocks;
-	block.super.ninodes = INODES_PER_BLOCK * ninodeblocks;
-	printf("Before the write in format\n");
-	disk_write(0, block.data);
-	printf("After the write in format\n");
-	
-	//Clear the inode table
-	for(int i=1; i< block.super.ninodes; i++){
-		block.inode[i].isvalid = 0;
-		disk_write(i/INODES_PER_BLOCK +1, block.data);
-	}
-	printf("Cleared inode table\n");
-	return 1;
-}
-
 void print_array(int array[], int size){
 	for(int i=0; i< size; i++){
 		if(array[i] == 0){ //points to a null block
@@ -73,6 +46,9 @@ void print_array(int array[], int size){
 	}
 	printf("\n");
 }
+
+
+
 int check_magic(int magic){
 	return (magic == FS_MAGIC);
 }
@@ -123,6 +99,44 @@ void fs_debug()
 	}	
 }
 
+int fs_format()
+{
+	union fs_block block;
+	//Check if already mounted
+	disk_read(0, block.data);
+	if (block.super.magic == FS_MAGIC)
+		return 0;
+
+	//Create superblock
+	int ninodeblocks = ceil(.1 * (double)disk_size());
+	block.super.magic = FS_MAGIC;
+	block.super.nblocks = disk_size();
+	block.super.ninodeblocks = ninodeblocks;
+	block.super.ninodes = INODES_PER_BLOCK * ninodeblocks;
+	printf("Before the write in format\n");
+	disk_write(0, block.data);
+	printf("After the write in format\n");
+	
+	union fs_block iblock;
+
+	//Clear the inode table
+	int ninodes = block.super.ninodes;
+	printf("ninodes: %d\n", ninodes);
+	for(int i=0; i<ninodes; i++){
+		disk_read(i/INODES_PER_BLOCK+1, iblock.data);
+		iblock.inode[i].isvalid = 0;
+		disk_write(i/INODES_PER_BLOCK +1, iblock.data);
+	}
+	printf("blocksuper 2: %d\n", block.super.ninodes);
+	for(int i=0; i<block.super.ninodes; i++){
+
+		disk_read(i/INODES_PER_BLOCK+1, iblock.data);
+		printf("%d : %d ", i/INODES_PER_BLOCK+1, iblock.inode[i].isvalid);
+	}
+	printf("Cleared inode table\n");
+	return 1;
+}
+
 int fs_mount()
 {
 	//Check if file system present
@@ -153,7 +167,7 @@ int fs_mount()
 
 		for (int j = 0; j < POINTERS_PER_INODE; j++) {
 			printf("second for loop\n");
-			printf("%d\n", block.inode[i].size);
+			printf("%d\n", block.inode[i].isvalid);
 			printf("%d\n", block.inode[i].direct[j]);
 			bitmap[block.inode[i].direct[j]] = 0; // Set block to not free in free block bitmap
 		}
