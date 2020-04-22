@@ -116,23 +116,24 @@ int fs_format()
 	printf("Before the write in format\n");
 	disk_write(0, block.data);
 	printf("After the write in format\n");
-	
-	union fs_block iblock;
 
 	//Clear the inode table
-	int ninodes = block.super.ninodes;
-	printf("ninodes: %d\n", ninodes);
-	for(int i=0; i<ninodes; i++){
+	union fs_block iblock;
+	for(int i=0; i<block.super.ninodes; i++){
+		printf("first for loop in format\n");
 		disk_read(i/INODES_PER_BLOCK+1, iblock.data);
+		printf("after disk_read\n");
 		iblock.inode[i].isvalid = 0;
 		disk_write(i/INODES_PER_BLOCK +1, iblock.data);
+		printf("%d: %d\n", i, i/INODES_PER_BLOCK +1);
 	}
-	printf("blocksuper 2: %d\n", block.super.ninodes);
+	
 	for(int i=0; i<block.super.ninodes; i++){
-
+		printf("second for loop in format\n");
 		disk_read(i/INODES_PER_BLOCK+1, iblock.data);
-		printf("%d : %d ", i/INODES_PER_BLOCK+1, iblock.inode[i].isvalid);
+		printf("%d : %d\n", i/INODES_PER_BLOCK+1, iblock.inode[i].isvalid);
 	}
+
 	printf("Cleared inode table\n");
 	return 1;
 }
@@ -157,27 +158,34 @@ int fs_mount()
 	}
 	printf("Initialized bitmap\n");
 
-	int ninodes = block.super.ninodes;
-	for(int i = 1; i < ninodes; i++) {
-		//printf("first for loop\n");
-		disk_read(i/INODES_PER_BLOCK +1, block.data); // Ask about "zero cannot be a valid inumber"
+	for (int i = 0; i < nblocks; i++) {
+		printf("%d ", bitmap[i]);
+	}
+	printf("\n");
 
-		if (!block.inode[i].isvalid)
+	union fs_block iblock;
+	union fs_block indirect_block;
+	for(int i = 1; i < block.super.ninodes; i++) {
+		printf("first for loop\n");
+		disk_read(i/INODES_PER_BLOCK +1, iblock.data); // Ask about "zero cannot be a valid inumber"
+
+		printf("iblock.inode[i].isvalid: %d\n", iblock.inode[i].isvalid);
+		if (!iblock.inode[i].isvalid)
 			continue;
 
-		for (int j = 0; j < POINTERS_PER_INODE; j++) {
+		/*for (int j = 0; j < POINTERS_PER_INODE; j++) {
 			printf("second for loop\n");
-			printf("%d\n", block.inode[i].isvalid);
-			printf("%d\n", block.inode[i].direct[j]);
-			bitmap[block.inode[i].direct[j]] = 0; // Set block to not free in free block bitmap
+			printf("%d\n", iblock.inode[i].isvalid);
+			printf("%d\n", iblock.inode[i].direct[j]);
+			bitmap[iblock.inode[i].direct[j]] = 0; // Set block to not free in free block bitmap
 		}
 
-		bitmap[block.inode[i].indirect] = 0;
-		disk_read(block.inode[i].indirect, block.data);
+		bitmap[iblock.inode[i].indirect] = 0;
+		disk_read(block.inode[i].indirect, indirect_block.data);
 		for (int k = 0; k < POINTERS_PER_BLOCK; k++) {
 			printf("third for loop\n");
-			bitmap[block.pointers[k]] = 0;
-		}
+			bitmap[indirect_block.pointers[k]] = 0;
+		}*/
 	}
 
 	//Prepare the File System
