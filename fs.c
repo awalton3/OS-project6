@@ -83,7 +83,7 @@ void fs_debug()
 				printf("inode %d:\n", j);
 				printf("    size: %d bytes\n", inode.size);
 				int direct_size = sizeof(inode.direct)/sizeof(int); 
-				if(direct_size > 0){
+				if(inode.size > 0){
 					printf("    direct blocks: ");
 					print_array(inode.direct, direct_size);
 				}
@@ -179,7 +179,9 @@ int fs_mount()
 				printf("second for loop\n");
 				printf("%d\n", iblock.inode[j].isvalid);
 				printf("%d\n", iblock.inode[j].direct[k]);
-				bitmap[iblock.inode[j].direct[k]] = 0; // Set block to not free in free block bitmap
+				if (iblock.inode[j].direct[k] != 0){  // To make sure we don't set superblock to free. 
+					bitmap[iblock.inode[j].direct[k]] = 0; // Set block to not free in free block bitmap
+				}
 			}
 
 			printf("index is %d\n", iblock.inode[j].indirect);
@@ -195,33 +197,32 @@ int fs_mount()
 		}
 	}
 
-	//Prepare the File System
-	
-	//Clear Inodes
-	// for(int i=1; i<=block.super.ninodes; i++){
-	// 	for(int j=0; j<POINTERS_PER_INODE; j++){
-	// 		block.inode->direct[j] = 0;
-	// 	}
-	// 	block.inode->indirect = 0;
-	// 	disk_write(i/INODES_PER_BLOCK + 1, block.data);
-	// }
-
 	return 1;
 }
 
 int fs_create()
 {
 	union fs_block block;
+	union fs_block iblock;
+	// reading in superblock
 	disk_read(0, block.data);
-	int ninodes = block.super.ninodes;
 	
-	for(int i=1; i<=ninodes; i++){
-		disk_read(i/INODES_PER_BLOCK +1, block.data);
-		if(!block.inode[i].isvalid){ //not valid means its free to use
-			block.inode[i].isvalid = 1;
-			block.inode[i].size = 0;
-			disk_write(i/INODES_PER_BLOCK + 1, block.data);
-			return i;
+	for(int i=1; i<=block.super.ninodeblocks; i++){
+		disk_read(i, iblock.data);
+		for (int j=0; j<INODES_PER_BLOCK; j++){
+			int inumber = ((i-1)*INODES_PER_BLOCK + j);  
+			if ( inumber == 0 )  //inumber
+				continue;
+			if(iblock.inode[j].isvalid == 0){ //not valid means its free to use
+				iblock.inode[j].isvalid = 1;
+				iblock.inode[j].size = 0;
+				for (int k=0; k<POINTERS_PER_INODE; k++){
+					iblock.inode[j].direct[k] = 0; // setting entire array to 0
+				}
+				iblock.inode[j].indirect = 0;
+				disk_write(i, iblock.data);
+				return inumber;
+			}
 		}
 	}
 	return 0;
