@@ -317,19 +317,16 @@ int fs_read( int inumber, char *data, int length, int offset )
 
 	//Check that offset is within range of direct
 	int direct_portion = DATA_BLOCK_SIZE*POINTERS_PER_INODE;
-	int current_direct, current_indirect;
+	int current_direct, current_indirect, ending_direct;
 
 	if (offset < direct_portion) {
-		current_direct =  iblock.inode[inumber].direct[offset/DATA_BLOCK_SIZE]; 
+		current_direct =  iblock.inode[inumber].direct[offset/DATA_BLOCK_SIZE];
 	} else {
 		//Check if indirect block is valid
 		if (iblock.inode[inumber].indirect) {
 			current_indirect = indirect_block.pointers[(offset-DATA_BLOCK_SIZE*POINTERS_PER_INODE)/DATA_BLOCK_SIZE];
 		}
 	}
-
-
-	int ending_direct = iblock.inode[inumber].direct[POINTERS_PER_INODE-1];
 
 /*	printf("offset: %d\n", offset);
 	printf("length: %d\n", length);
