@@ -81,7 +81,7 @@ void fs_debug()
 			if(inode.isvalid){
 				printf("inode %d:\n", j);
 				printf("    size: %d bytes\n", inode.size);
-				int direct_size = sizeof(inode.direct)/sizeof(int); 
+				int direct_size = sizeof(inode.direct)/sizeof(int);
 				if(inode.size > 0){
 					printf("    direct blocks: ");
 					print_array(inode.direct, direct_size);
@@ -95,7 +95,7 @@ void fs_debug()
 				}
 			}
 		}
-	}	
+	}
 }
 
 int fs_format()
@@ -127,7 +127,7 @@ int fs_format()
 		}
 		disk_write(i, iblock.data);
 	}
-	
+
 	/*for(int i=0; i<block.super.ninodeblocks; i++){
 		printf("second for loop in format\n");
 		disk_read(i, iblock.data);
@@ -185,7 +185,7 @@ int fs_mount()
 				printf("second for loop\n");
 				printf("%d\n", iblock.inode[j].isvalid);
 				printf("%d\n", iblock.inode[j].direct[k]);
-				if (iblock.inode[j].direct[k] != 0){  // To make sure we don't set superblock to free. 
+				if (iblock.inode[j].direct[k] != 0){  // To make sure we don't set superblock to free.
 					bitmap[iblock.inode[j].direct[k]] = 0; // Set block to not free in free block bitmap
 				}
 			}
@@ -198,7 +198,7 @@ int fs_mount()
 					printf("third for loop\n");
 					printf("%d\n", indirect_block.pointers[k]);
 					bitmap[indirect_block.pointers[k]] = 0;
-				}	
+				}
 			}
 		}
 	}
@@ -212,11 +212,11 @@ int fs_create()
 	union fs_block iblock;
 	// reading in superblock
 	disk_read(0, block.data);
-	
+
 	for(int i=1; i<=block.super.ninodeblocks; i++){
 		disk_read(i, iblock.data);
 		for (int j=0; j<INODES_PER_BLOCK; j++){
-			int inumber = ((i-1)*INODES_PER_BLOCK + j);  
+			int inumber = ((i-1)*INODES_PER_BLOCK + j);
 			if ( inumber == 0 )  //inumber
 				continue;
 			if(iblock.inode[j].isvalid == 0){ //not valid means its free to use
@@ -248,7 +248,7 @@ int fs_delete( int inumber )
 	iblock.inode[inumber].size = 0;
 
 	for (int i = 0; i < POINTERS_PER_INODE; i++){
-		if (iblock.inode[inumber].direct[i] != 0){  // To make sure we don't set superblock to free. 
+		if (iblock.inode[inumber].direct[i] != 0){  // To make sure we don't set superblock to free.
 			bitmap[iblock.inode[inumber].direct[i]] = 1; // updating the bitmap free list
 			iblock.inode[inumber].direct[i] = 0;
 		}
@@ -288,38 +288,57 @@ int fs_getsize( int inumber )
 	if (!iblock.inode[inumber].isvalid || iblock.inode[inumber].size < 0)
 		return -1;
 
-	return iblock.inode[inumber].size;	
+	return iblock.inode[inumber].size;
 }
 
 int fs_read( int inumber, char *data, int length, int offset )
 {
-	// check if inode is valid
-	union fs_block iblock;
-	union fs_block block;
-	union fs_block dblock;
+	union fs_block block; //super
+	union fs_block iblock; //inode block
+	union fs_block dblock; //data block
 	union fs_block indirect_block;
+
 	disk_read(0, block.data);
 	disk_read(get_iblock(inumber), iblock.data);
 	disk_read(iblock.inode[inumber].indirect, indirect_block.data);
+
 	printf("after disk reads\n");
-	
+
 	if (!iblock.inode[inumber].isvalid)
 		return 0; // fails
-	
+
 	int bytes_read = 0;
+
 	// TODO: Check if there are direct blocks
 	if (!iblock.inode[inumber].direct[0])
 		return 0;
-	int current_direct = (offset/DATA_BLOCK_SIZE) + iblock.inode[inumber].direct[0];
-	int ending_direct = iblock.inode[inumber].direct[POINTERS_PER_INODE-1];
-	int current_indirect;
-	if (iblock.inode[inumber].indirect)
-		current_indirect = indirect_block.pointers[(offset-DATA_BLOCK_SIZE*POINTERS_PER_INODE)/DATA_BLOCK_SIZE];
 
-	printf("offset: %d\n", offset);
+	//int current_direct = (offset/DATA_BLOCK_SIZE) + iblock.inode[inumber].direct[0];
+
+	//Check that offset is within range of direct
+	int direct_portion = DATA_BLOCK_SIZE*POINTERS_PER_INODE;
+	int current_direct, current_indirect;
+
+	if (offset < direct_portion) {
+		current_direct =  iblock.inode[inumber].direct[offset/DATA_BLOCK_SIZE]; 
+	} else {
+		//Check if indirect block is valid
+		if (iblock.inode[inumber].indirect) {
+			current_indirect = indirect_block.pointers[(offset-DATA_BLOCK_SIZE*POINTERS_PER_INODE)/DATA_BLOCK_SIZE];
+		}
+	}
+
+
+	int ending_direct = iblock.inode[inumber].direct[POINTERS_PER_INODE-1];
+
+/*	printf("offset: %d\n", offset);
 	printf("length: %d\n", length);
 	printf("current_direct: %d\n", current_direct);
-	printf("nblocks: %d\n", block.super.nblocks);
+	printf("nblocks: %d\n", block.super.nblocks); */
+
+	printf("offset: 20,490 bytes\n");
+	printf("pointer index using dbSize : %d\n", (20490-DATA_BLOCK_SIZE*POINTERS_PER_INODE)/DATA_BLOCK_SIZE);
+	printf("pointer index using sizePointerEntry : %d\n", (20490-DATA_BLOCK_SIZE*POINTERS_PER_INODE)/4);
 
 	int i = current_direct;
 	int j = current_indirect;
@@ -331,9 +350,9 @@ int fs_read( int inumber, char *data, int length, int offset )
 			bytes_read += DATA_BLOCK_SIZE;
 			i++;
 		}
-
 		// indirect block section
 		else {
+			//do we need this ??
 			if (!iblock.inode[inumber].indirect)
 				return 0;
 			disk_read(j, dblock.data);
