@@ -48,8 +48,6 @@ void print_array(int array[], int size){
 	printf("\n");
 }
 
-
-
 int check_magic(int magic){
 	return (magic == FS_MAGIC);
 }
@@ -299,25 +297,53 @@ int fs_read( int inumber, char *data, int length, int offset )
 	union fs_block iblock;
 	union fs_block block;
 	union fs_block dblock;
+	union fs_block indirect_block;
 	disk_read(0, block.data);
 	disk_read(get_iblock(inumber), iblock.data);
+	disk_read(iblock.inode[inumber].indirect, indirect_block.data);
+	printf("after disk reads\n");
 	
 	if (!iblock.inode[inumber].isvalid)
 		return 0; // fails
 	
 	int bytes_read = 0;
-	int current_block = (offset/DATA_BLOCK_SIZE) + block.super.ninodeblocks + 1;
-	int ending_block = (offset+length)/DATA_BLOCK_SIZE + block.super.ninodeblocks+1;
-	if (ending_block > block.super.nblocks){
-		ending_block = block.super.nblocks;
-	}
-	for (int i = current_block; i <= ending_block; i++){
-		disk_read(i, dblock.data); 
-		strcat(dblock.data, "\0");
-		strcat(data, dblock.data); 
-		bytes_read = bytes_read + DATA_BLOCK_SIZE;
+	// TODO: Check if there are direct blocks
+	if (!iblock.inode[inumber].direct[0])
+		return 0;
+	int current_direct = (offset/DATA_BLOCK_SIZE) + iblock.inode[inumber].direct[0];
+	int ending_direct = iblock.inode[inumber].direct[POINTERS_PER_INODE-1];
+	int current_indirect;
+	if (iblock.inode[inumber].indirect)
+		current_indirect = indirect_block.pointers[(offset-DATA_BLOCK_SIZE*POINTERS_PER_INODE)/DATA_BLOCK_SIZE];
+
+	printf("offset: %d\n", offset);
+	printf("length: %d\n", length);
+	printf("current_direct: %d\n", current_direct);
+	printf("nblocks: %d\n", block.super.nblocks);
+
+	int i = current_direct;
+	int j = current_indirect;
+	while (bytes_read < length) {
+		// direct block section
+		if (i <= ending_direct) {
+			disk_read(i, dblock.data);
+			strncat(data, dblock.data, DATA_BLOCK_SIZE);
+			bytes_read += DATA_BLOCK_SIZE;
+			i++;
+		}
+
+		// indirect block section
+		else {
+			if (!iblock.inode[inumber].indirect)
+				return 0;
+			disk_read(j, dblock.data);
+			strncat(data, dblock.data, DATA_BLOCK_SIZE);
+			bytes_read += DATA_BLOCK_SIZE;
+			j++;
+		}
 	}
 
+	printf("bytes_read: %d\n", bytes_read);
 	return bytes_read;
 }
 
