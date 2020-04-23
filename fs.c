@@ -13,6 +13,7 @@
 #define INODES_PER_BLOCK   128
 #define POINTERS_PER_INODE 5
 #define POINTERS_PER_BLOCK 1024
+#define DATA_BLOCK_SIZE    4096
 
 struct fs_superblock {
 	int magic;
@@ -289,13 +290,35 @@ int fs_getsize( int inumber )
 	if (!iblock.inode[inumber].isvalid || iblock.inode[inumber].size < 0)
 		return -1;
 
-	return iblock.inode[inumber].size;
-	
+	return iblock.inode[inumber].size;	
 }
 
 int fs_read( int inumber, char *data, int length, int offset )
 {
-	return 0;
+	// check if inode is valid
+	union fs_block iblock;
+	union fs_block block;
+	union fs_block dblock;
+	disk_read(0, block.data);
+	disk_read(get_iblock(inumber), iblock.data);
+	
+	if (!iblock.inode[inumber].isvalid)
+		return 0; // fails
+	
+	int bytes_read = 0;
+	int current_block = (offset/DATA_BLOCK_SIZE) + block.super.ninodeblocks + 1;
+	int ending_block = (offset+length)/DATA_BLOCK_SIZE + block.super.ninodeblocks+1;
+	if (ending_block > block.super.nblocks){
+		ending_block = block.super.nblocks;
+	}
+	for (int i = current_block; i <= ending_block; i++){
+		disk_read(i, dblock.data); 
+		strcat(dblock.data, "\0");
+		strcat(data, dblock.data); 
+		bytes_read = bytes_read + DATA_BLOCK_SIZE;
+	}
+
+	return bytes_read;
 }
 
 int fs_write( int inumber, const char *data, int length, int offset )
