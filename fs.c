@@ -150,13 +150,20 @@ int fs_mount()
 
 	//Build free block bitmap
 	int nblocks = block.super.nblocks;
+
 	bitmap = malloc(nblocks*sizeof(int)); //begin with all free (1)
 
-	bitmap[0] = 0;	// Super block is never free
-	//Initialize to free - 1s
+		//Initialize to free - 1s
 	for(int i=1; i<nblocks; i++){
 		bitmap[i] = 1;
 	}
+	bitmap[0] = 0;	// Super block is never free
+
+	// setting inode blocks to not free
+	for (int j=1; j<=block.super.ninodeblocks; j++){
+		bitmap[j] = 0;
+	}
+
 	printf("Initialized bitmap\n");
 
 	for (int i = 0; i < nblocks; i++) {
@@ -230,12 +237,60 @@ int fs_create()
 
 int fs_delete( int inumber )
 {
-	return 0;
+	union fs_block block;
+	union fs_block iblock;
+	disk_read(0, block.data);
+
+	disk_read(inumber/INODES_PER_BLOCK+1, iblock.data);
+	if (iblock.inode[inumber].isvalid == 0){  // meaning it's already invalid
+		return 0;
+	}
+	iblock.inode[inumber].isvalid = 0;
+	iblock.inode[inumber].size = 0;
+
+	for (int i = 0; i < POINTERS_PER_INODE; i++){
+		if (iblock.inode[inumber].direct[i] != 0){  // To make sure we don't set superblock to free. 
+			bitmap[iblock.inode[inumber].direct[i]] = 1; // updating the bitmap free list
+			iblock.inode[inumber].direct[i] = 0;
+		}
+	}
+	disk_write(inumber/INODES_PER_BLOCK+1, iblock.data);
+	union fs_block indirect_block;
+	int indirect_block_num = iblock.inode[inumber].indirect;
+	disk_read(indirect_block_num, indirect_block.data);
+
+	if (indirect_block_num != 0){
+		for (int i = 0; i < POINTERS_PER_BLOCK; i++){
+			bitmap[indirect_block.pointers[i]] = 1;
+			indirect_block.pointers[i] = 0;
+		}
+
+		bitmap[indirect_block_num] = 1;
+		iblock.inode[inumber].indirect = 0;
+	}
+	disk_write(indirect_block_num, indirect_block.data);
+
+	for (int i = 0; i < block.super.nblocks; i++) {
+		printf("%d ", bitmap[i]);
+	}
+	printf("\n");
+
+	return 1;
+}
+
+int get_iblock(int inumber){
+	return inumber/INODES_PER_BLOCK+1;
 }
 
 int fs_getsize( int inumber )
 {
-	return -1;
+	union fs_block iblock;
+	disk_read(get_iblock(inumber), iblock.data);
+	if (!iblock.inode[inumber].isvalid || iblock.inode[inumber].size < 0)
+		return -1;
+
+	return iblock.inode[inumber].size;
+	
 }
 
 int fs_read( int inumber, char *data, int length, int offset )
