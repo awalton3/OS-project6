@@ -65,6 +65,10 @@ int find_free_block(int nblocks) {
 	return -1;
 }
 
+int get_inode_index(int inumber) {
+	return inumber % INODES_PER_BLOCK;
+}
+
 void fs_debug()
 {
 	union fs_block block;
@@ -237,23 +241,30 @@ int fs_create()
 				iblock.inode[j].size = 0;
 				for (int k=0; k<POINTERS_PER_INODE; k++){
 					iblock.inode[j].direct[k] = 0; // setting entire array to 0
+					disk_write(i, iblock.data);
 				}
 				iblock.inode[j].indirect = 0;
-				disk_write(i, iblock.data);
+				
+				disk_read(i, iblock.data);
+				print_array(iblock.inode[j].direct, POINTERS_PER_INODE);
 				return inumber;
 			}
 		}
 	}
+
 	return 0;
 }
 
 int fs_delete( int inumber )
 {
+	int iblocknum = get_iblock(inumber);
+	inumber = get_inode_index(inumber);
+
 	union fs_block block;
 	union fs_block iblock;
 	disk_read(0, block.data);
 
-	disk_read(inumber/INODES_PER_BLOCK+1, iblock.data);
+	disk_read(iblocknum, iblock.data);
 	if (iblock.inode[inumber].isvalid == 0){  // meaning it's already invalid
 		return 0;
 	}
@@ -266,7 +277,7 @@ int fs_delete( int inumber )
 			iblock.inode[inumber].direct[i] = 0;
 		}
 	}
-	disk_write(inumber/INODES_PER_BLOCK+1, iblock.data);
+	disk_write(iblocknum, iblock.data);
 	union fs_block indirect_block;
 	int indirect_block_num = iblock.inode[inumber].indirect;
 	disk_read(indirect_block_num, indirect_block.data);
@@ -292,8 +303,11 @@ int fs_delete( int inumber )
 
 int fs_getsize( int inumber )
 {
+	int iblocknum = get_iblock(inumber);
+	inumber = get_inode_index(inumber);
+
 	union fs_block iblock;
-	disk_read(get_iblock(inumber), iblock.data);
+	disk_read(iblocknum, iblock.data);
 	if (!iblock.inode[inumber].isvalid || iblock.inode[inumber].size < 0)
 		return -1;
 
@@ -302,6 +316,10 @@ int fs_getsize( int inumber )
 
 int fs_read( int inumber, char *data, int length, int offset )
 {
+	int iblocknum = get_iblock(inumber);
+	int real_inumber = inumber;
+	inumber = get_inode_index(inumber);
+
 	//printf("beginning - strlen(data): %ld\n", strlen(data));
 	strcpy(data, "");
 
@@ -311,7 +329,7 @@ int fs_read( int inumber, char *data, int length, int offset )
 	union fs_block indirect_block;
 
 	disk_read(0, block.data);
-	disk_read(get_iblock(inumber), iblock.data);
+	disk_read(iblocknum, iblock.data);
 	disk_read(iblock.inode[inumber].indirect, indirect_block.data);
 
 	//printf("after disk reads\n");
@@ -326,7 +344,7 @@ int fs_read( int inumber, char *data, int length, int offset )
 	if (!iblock.inode[inumber].isvalid)
 		return 0; // fails
 
-	if (fs_getsize(inumber) == 0) {
+	if (fs_getsize(real_inumber) == 0) {
 		return bytes_read;
 	}
 
@@ -382,13 +400,16 @@ int fs_read( int inumber, char *data, int length, int offset )
 
 int fs_write( int inumber, const char *data, int length, int offset )
 {
+	int iblocknum = get_iblock(inumber);
+	inumber = get_inode_index(inumber);
+
 	union fs_block block; //super
 	union fs_block iblock; //inode block
 	union fs_block dblock; //data block
 	union fs_block indirect_block;
 
 	disk_read(0, block.data);
-	disk_read(get_iblock(inumber), iblock.data);
+	disk_read(iblocknum, iblock.data);
 
 	if (!iblock.inode[inumber].isvalid)
 		return 0; // fails
@@ -412,21 +433,27 @@ int fs_write( int inumber, const char *data, int length, int offset )
 		}
 
 		// Look for free direct field in inode
+		print_array(iblock.inode[inumber].direct, POINTERS_PER_INODE);
+
 		for (int i = 0; i < POINTERS_PER_INODE; i++) {
 			if (iblock.inode[inumber].direct[i] == 0) {
 				printf("Looking for free direct field in inode\n");
 				iblock.inode[inumber].direct[i] = free_block;
 				direct_found = true;
+				break;
 			}
 		}
 
+		print_array(iblock.inode[inumber].direct, POINTERS_PER_INODE);
+
 		// Look for free indirect field in inode
 		if (!direct_found) {
+			printf("Mapping to a new indirect block\n");
 			// Map to a new indirect block
 			if (iblock.inode[inumber].indirect == 0) {
-				printf("Mapping to a new indirect block\n");
 				free_pointers_block = find_free_block(block.super.nblocks);
 				printf("free_pointers_block: %d\n", free_pointers_block);
+				iblock.inode[inumber].indirect = free_pointers_block;
 				disk_read(free_pointers_block, indirect_block.data);
 				indirect_block.pointers[0] = free_block;
 				// Initialize pointers block
@@ -443,13 +470,14 @@ int fs_write( int inumber, const char *data, int length, int offset )
 				for (int i = 0; i < POINTERS_PER_BLOCK; i++) {
 					if (indirect_block.pointers[i] == 0) {
 						indirect_block.pointers[i] = free_block;
+						break;
 					}
 				}
 				disk_write(iblock.inode[inumber].indirect, indirect_block.data);
 			}
 		}
 
-		disk_write(get_iblock(inumber), iblock.data);
+		disk_write(iblocknum, iblock.data);
 		bitmap[free_block] = 0;
 
 		for (int i = 0; i < block.super.nblocks; i++) {
@@ -457,7 +485,6 @@ int fs_write( int inumber, const char *data, int length, int offset )
 		}
 		printf("\n");
 
-		disk_read(free_block, dblock.data);
 		strcpy(dblock.data, data + offset + bytes_written);
 		disk_write(free_block, dblock.data);
 		//printf("strlen(data): %ld\n", strlen(data));
