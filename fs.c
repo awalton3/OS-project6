@@ -381,13 +381,19 @@ int fs_read(int inumber, char *data, int length, int offset)
 	int current_indirect_block;
 	int current_indirect_index = (offset-DATA_BLOCK_SIZE*POINTERS_PER_INODE)/DATA_BLOCK_SIZE;
 	int bytes_read = 0;
+	int bytes_read_rn = 0;
 	int amount_to_read = iblock.inode[inumber].size - offset;
 
 	while (amount_to_read > 0) {
 
+		printf("strlen(data) is %ld\n", strlen(data));
+		printf("amount_to_read is %d\n", amount_to_read);
+		bytes_read_rn = 0;
+
 		//Data container exceeds length (16384)
 		if (strlen(data) >= length) {
-				return bytes_read;
+			printf("About to return with %d bytes\n", bytes_read);
+			return bytes_read;
 		}
 
 		// direct block section
@@ -397,20 +403,23 @@ int fs_read(int inumber, char *data, int length, int offset)
 
 			if (current_direct_block > 0) {
 
+				printf("Before disk read in direct block section\n");
 				disk_read(current_direct_block, dblock.data);
 
 				// Smaller segments
 				if (amount_to_read <= DATA_BLOCK_SIZE) {
 					printf("does not exceed block size\n");
 					bytes_read += amount_to_read;
+					bytes_read_rn += amount_to_read;
 					strncat(data, dblock.data, bytes_read);
 				} else { //when amount to read exceeds block size
 					// read what we can fit in - 4kb
 					printf("exceeded block size\n");
 					bytes_read += DATA_BLOCK_SIZE;
+					bytes_read_rn +=DATA_BLOCK_SIZE;
 					strncat(data, dblock.data, DATA_BLOCK_SIZE);
 				}
-				amount_to_read = amount_to_read - bytes_read;
+				amount_to_read = amount_to_read - bytes_read_rn;
 			}
 			current_direct_index++;
 			current_indirect_index++;
@@ -419,9 +428,10 @@ int fs_read(int inumber, char *data, int length, int offset)
 		// indirect block section
 		else {
 
-			if (!iblock.inode[inumber].indirect)
+			if (!iblock.inode[inumber].indirect){
+				printf("About to return 0\n");
 				return 0;
-
+			}
 			if (current_indirect_index >= POINTERS_PER_BLOCK) {
 				printf("The end of the inode is reached.\n");
 				return bytes_read;
@@ -437,20 +447,23 @@ int fs_read(int inumber, char *data, int length, int offset)
 				// Smaller segments
 				if (amount_to_read <= DATA_BLOCK_SIZE) {
 					bytes_read += amount_to_read;
+					bytes_read_rn += amount_to_read;
 					strncat(data, dblock.data, bytes_read);
 				} else { //when amount to read exceeds block size
 					// read what we can fit in - 4kb
 					printf("Exceeded block size\n");
-					bytes_read += DATA_BLOCK_SIZE;
+					bytes_read += DATA_BLOCK_SIZE;	
+					bytes_read_rn += DATA_BLOCK_SIZE;
 					strncat(data, dblock.data, DATA_BLOCK_SIZE);
 				}
 
-				amount_to_read = amount_to_read - bytes_read;
+				amount_to_read = amount_to_read - bytes_read_rn;
 			}
 			current_indirect_index++;
 		}
 	}
 	//printf("total bytes_read: %d\n", bytes_read);
+	printf("At end of read file\n");
 	return bytes_read;
 }
 
