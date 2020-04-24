@@ -410,13 +410,13 @@ int fs_read(int inumber, char *data, int length, int offset)
 				if (amount_to_read <= DATA_BLOCK_SIZE) {
 					printf("does not exceed block size\n");
 					bytes_read += amount_to_read;
-					bytes_read_rn += amount_to_read;
-					strncat(data, dblock.data, bytes_read);
+					bytes_read_rn = amount_to_read;
+					strncat(data, dblock.data, bytes_read_rn);
 				} else { //when amount to read exceeds block size
 					// read what we can fit in - 4kb
 					printf("exceeded block size\n");
 					bytes_read += DATA_BLOCK_SIZE;
-					bytes_read_rn +=DATA_BLOCK_SIZE;
+					bytes_read_rn =DATA_BLOCK_SIZE;
 					strncat(data, dblock.data, DATA_BLOCK_SIZE);
 				}
 				amount_to_read = amount_to_read - bytes_read_rn;
@@ -447,13 +447,13 @@ int fs_read(int inumber, char *data, int length, int offset)
 				// Smaller segments
 				if (amount_to_read <= DATA_BLOCK_SIZE) {
 					bytes_read += amount_to_read;
-					bytes_read_rn += amount_to_read;
-					strncat(data, dblock.data, bytes_read);
+					bytes_read_rn = amount_to_read;
+					strncat(data, dblock.data, bytes_read_rn);
 				} else { //when amount to read exceeds block size
 					// read what we can fit in - 4kb
 					printf("Exceeded block size\n");
 					bytes_read += DATA_BLOCK_SIZE;	
-					bytes_read_rn += DATA_BLOCK_SIZE;
+					bytes_read_rn = DATA_BLOCK_SIZE;
 					strncat(data, dblock.data, DATA_BLOCK_SIZE);
 				}
 
@@ -489,14 +489,19 @@ int fs_write(int inumber, const char *data, int length, int offset)
 
 	while (bytes_written < length) {
 
-		printf("WRITING!\n");
+		printf("block.super.nblocks %d\n", block.super.nblocks);
 
 		free_block = find_free_block(block.super.nblocks);
 
 		char *temp =  data + offset + bytes_written;
-		printf("%s\n", temp);
+		printf("temp is %s\n", temp);
 
-		//check if temp is bigger than 4096, if so read up to length
+		//check if temp is bigger than 4096, if so write up to length
+		if(strlen(temp) > DATA_BLOCK_SIZE){
+			
+			//strcpy(dblock.data, 
+			printf("THIS is TODO\n");
+		}
 
 		strcpy(dblock.data, temp);
 
