@@ -503,14 +503,14 @@ int fs_write(int inumber, const char *data, int length, int offset)
 		for (int i = 0; i < POINTERS_PER_INODE; i++) {
 			if (iblock.inode[inumber].direct[i] == 0) {
 				printf("Looking for free direct field in inode\n");
-				iblock.inode[inumber].direct[i] = free_block; //mapping
+				iblock.inode[inumber].direct[i] = free_block;
+				printf("Did I declare direct block? %d\n", iblock.inode[inumber].direct[i]);
 				direct_found = true;
 				disk_write(iblocknum, iblock.data);
 				break;
 			}
 		}
-
-		//print_valid_blocks(iblock.inode[inumber].direct, POINTERS_PER_INODE);
+		disk_read(iblocknum, iblock.data); // This is just for testing -- seems to get right value
 
 		// Look for free indirect field in inode
 		if (!direct_found) {
@@ -547,13 +547,16 @@ int fs_write(int inumber, const char *data, int length, int offset)
 
 		bitmap[free_block] = 0;
 
-		// for (int i = 0; i < block.super.nblocks; i++) {
-		// 	printf("%d ", bitmap[i]);
-		// }
-		// printf("\n");
-
-		// strcpy(dblock.data, data + offset + bytes_written);
-		// disk_write(free_block, dblock.data);
+		for (int i = 0; i < block.super.nblocks; i++) {
+			printf("%d ", bitmap[i]);
+		}
+		printf("\n");
+		printf("data + offset +bytes_writ = %s\n", data + offset + bytes_written);
+		strcpy(dblock.data, data + offset + bytes_written);
+		printf("dblock.data before write = %s\n", dblock.data);
+		disk_write(free_block, dblock.data);
+		disk_read(free_block, dblock.data); // temp!
+		printf("dblock.data after write = %s\n", dblock.data);
 		//printf("strlen(data): %ld\n", strlen(data));
 		bytes_written += strlen(data);
 	}
