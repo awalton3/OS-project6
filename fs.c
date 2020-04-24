@@ -524,7 +524,11 @@ int fs_write(int inumber, const char *data, int length, int offset)
 				iblock.inode[inumber].direct[i] = free_block;
 				printf("Did I declare direct block? %d\n", iblock.inode[inumber].direct[i]);
 				direct_found = true;
+				printf("iblocknum is %d\n", iblocknum);
 				disk_write(iblocknum, iblock.data);
+				//TEMP REad for testing
+				//disk_read(iblocknum, iblock.data);
+				//printf("inode[inum].direct[i] %d\n", iblock.inode[inumber].direct[i]);
 				break;
 			}
 		}
@@ -560,24 +564,170 @@ int fs_write(int inumber, const char *data, int length, int offset)
 				disk_write(iblock.inode[inumber].indirect, indirect_block.data);
 			}
 		}
-
-		// disk_write(iblocknum, iblock.data);
+		
+		//disk_write(iblocknum, iblock.data);
 
 		bitmap[free_block] = 0;
 
-		for (int i = 0; i < block.super.nblocks; i++) {
+		/*for (int i = 0; i < block.super.nblocks; i++) {
 			printf("%d ", bitmap[i]);
 		}
-		printf("\n");
-		printf("data + offset +bytes_writ = %s\n", data + offset + bytes_written);
+		printf("\n");*/
+		//printf("data + offset +bytes_writ = %s\n", data + offset + bytes_written);
 		strcpy(dblock.data, data + offset + bytes_written);
-		printf("dblock.data before write = %s\n", dblock.data);
+		iblock.inode[inumber].size += strlen(dblock.data);
+		disk_write(iblocknum, iblock.data);
+		//printf("dblock.data before write = %s\n", dblock.data);
 		disk_write(free_block, dblock.data);
-		disk_read(free_block, dblock.data); // temp!
-		printf("dblock.data after write = %s\n", dblock.data);
+		//disk_read(free_block, dblock.data); // temp!
+		//printf("dblock.data after write = %s\n", dblock.data);
 		//printf("strlen(data): %ld\n", strlen(data));
-		bytes_written += strlen(data);
+		bytes_written += strlen(data);			
 	}
 
 	return bytes_written;
 }
+/*
+int fs_write(int inumber, const char *data, int length, int offset)
+{
+
+	int iblocknum = get_iblock(inumber);
+	inumber = get_inode_index(inumber); //inode_index
+
+	union fs_block block; //super
+	union fs_block iblock; //inode block
+	union fs_block dblock; //data block
+	union fs_block indirect_block;
+	disk_read(0, block.data);
+	disk_read(iblocknum, iblock.data);
+
+	
+	// just to make sure we have a valid inode
+	if (!iblock.inode[inumber].isvalid)
+		return 0; //fails
+
+	int bytes_written = 0;
+	int free_block, free_pointers_block;
+	bool direct_found = false;
+
+	//Split data into segments of size of data block
+	int num_blocks = ceil(length/DATA_BLOCK_SIZE);
+	char* data_array[num_blocks];
+	char* current_data = "";
+	for(int i=0; i<num_blocks; i++){
+		for(int c=0; c<DATA_BLOCK_SIZE; c++){ //copy individual chars
+			strcat(current_data, data[c + i*DATA_BLOCK_SIZE]);
+		}
+		data_array[i] = current_data;
+		printf("Data array: %s\n", data_array[i]);
+		current_data = "";
+	}
+	int data_index = 0;
+	
+	while (bytes_written < length) {
+
+		printf("WRITING!\n");
+		
+		for(int i=0; i<block.super.nblocks; i++){
+			printf("%d ", bitmap[i]);
+		}
+		printf("\n");
+
+		free_block = find_free_block(block.super.nblocks-1);
+		printf("free block: %d\n", free_block);
+
+		//char *temp =  data + offset + bytes_written;
+		//printf("%s\n", temp);
+		//123, 456
+		//FOR SMALL FILES
+		if (offset < DATA_BLOCK_SIZE){
+			printf("Trying to strcpy %s\n", data_array[data_index]);
+			strcpy(dblock.data, data_array[data_index]);
+			data_index++;
+		}
+		// we moved it here because otherwise 
+		//if you need to create an indirect block, it will get the same as free block
+		
+
+		disk_write(free_block, dblock.data);
+		// makes sense to immediately update it
+		bitmap[free_block] = 0;
+
+		printf("free_block: %d\n", free_block);
+
+		if (free_block == -1) {
+			printf("The disk is full.\n");
+			return bytes_written;
+		}
+
+		// Look for free direct field in inode
+		//print_valid_blocks(iblock.inode[inumber].direct, POINTERS_PER_INODE);
+
+		//Searhing for an available direct pointer for free block
+		for (int i = 0; i < POINTERS_PER_INODE; i++) {
+			if (iblock.inode[inumber].direct[i] == 0) {
+				printf("Looking for free direct field in inode\n");
+				iblock.inode[inumber].direct[i] = free_block; //mapping
+				direct_found = true;
+				disk_write(iblocknum, iblock.data);
+				break;
+			}
+		}
+
+		//print_valid_blocks(iblock.inode[inumber].direct, POINTERS_PER_INODE);
+
+		// Look for free indirect field in inode
+		if (!direct_found) {
+			printf("Mapping to a new indirect block\n");
+			// Map to a new indirect block
+			if (iblock.inode[inumber].indirect == 0) {
+				free_pointers_block = find_free_block(block.super.nblocks);
+				// OTHERWISE: free_pointer_block == free_block
+				printf("free_pointers_block: %d\n", free_pointers_block);
+				iblock.inode[inumber].indirect = free_pointers_block;
+				disk_read(free_pointers_block, indirect_block.data);
+				indirect_block.pointers[0] = free_block;
+				// Initialize pointers block
+				for (int i = 1; i < POINTERS_PER_BLOCK; i++) {
+					indirect_block.pointers[i] = 0;
+				}
+				disk_write(free_pointers_block, indirect_block.data);
+				bitmap[free_pointers_block] = 0;
+			}
+			// Look for free pointers in existing indirect pointers block
+			else {
+				printf("Look for free pointers in existing indirect pointers block\n");
+				disk_read(iblock.inode[inumber].indirect, indirect_block.data);
+				for (int i = 0; i < POINTERS_PER_BLOCK; i++) {
+					if (indirect_block.pointers[i] == 0) {
+						indirect_block.pointers[i] = free_block;
+						break;
+					}
+				}
+				disk_write(iblock.inode[inumber].indirect, indirect_block.data);
+			}
+		}
+	
+		// write the inode block into memory
+		iblock.inode[inumber].size += length; 
+		disk_write(iblocknum, iblock.data);
+
+
+		// the inode information is not correctly updated
+
+		//bitmap[free_block] = 0;
+
+		// for (int i = 0; i < block.super.nblocks; i++) {
+		// 	printf("%d ", bitmap[i]);
+		// }
+		// printf("\n");
+
+		// strcpy(dblock.data, data + offset + bytes_written);
+		// disk_write(free_block, dblock.data);
+		//printf("strlen(data): %ld\n", strlen(data));
+		bytes_written = strlen(data); // or could just be length
+	}
+
+	return bytes_written;
+}*/
+
