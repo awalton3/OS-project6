@@ -485,34 +485,41 @@ int fs_write(int inumber, const char *data, int length, int offset)
 
 	int bytes_written = 0;
 	int free_block, free_pointers_block;
-	bool direct_found = false;
+	bool direct_found;
+	char* const_data = data + offset;
 
+	
 	while (bytes_written < length) {
-
+		direct_found = false;
 		printf("block.super.nblocks %d\n", block.super.nblocks);
 
 		free_block = find_free_block(block.super.nblocks);
-
-		char *temp =  data + offset + bytes_written;
-		printf("temp is %s\n", temp);
-
-		//check if temp is bigger than 4096, if so write up to length
-		if(strlen(temp) > DATA_BLOCK_SIZE){
-			
-			//strcpy(dblock.data, 
-			printf("THIS is TODO\n");
-		}
-
-		strcpy(dblock.data, temp);
-
-		disk_write(free_block, dblock.data);
-
-		printf("free_block: %d\n", free_block);
 
 		if (free_block == -1) {
 			printf("The disk is full.\n");
 			return bytes_written;
 		}
+
+		char *temp = const_data + bytes_written;	//ATTENTION: THIS IS THE LINE THAT IS BROKEN
+		printf("bytes_written is %d\n", bytes_written);
+		printf("temp* is %p\n", &temp);
+		printf("length is %d\n", length);
+		printf("offset is %d\n", offset);
+		printf("strlen(data) is %ld\n", strlen(data));
+		//printf("temp is %s\n", temp);
+
+		//check if temp is bigger than data block size, write up to data block size only
+		if(strlen(temp) > DATA_BLOCK_SIZE){
+			strncpy(dblock.data, temp, DATA_BLOCK_SIZE);
+			printf("temp in if is %s\n\n", dblock.data);
+		}
+		else{
+			strcpy(dblock.data, temp);
+			printf("temp in else is %s\n\n", dblock.data);
+
+		}
+		disk_write(free_block, dblock.data);
+		printf("free_block: %d\n", free_block);
 
 		// Look for free direct field in inode
 		//print_valid_blocks(iblock.inode[inumber].direct, POINTERS_PER_INODE);
@@ -574,15 +581,15 @@ int fs_write(int inumber, const char *data, int length, int offset)
 		}
 		printf("\n");*/
 		//printf("data + offset +bytes_writ = %s\n", data + offset + bytes_written);
-		strcpy(dblock.data, data + offset + bytes_written);
+		//strcpy(dblock.data, data + offset + bytes_written);
 		iblock.inode[inumber].size += strlen(dblock.data);
 		disk_write(iblocknum, iblock.data);
 		//printf("dblock.data before write = %s\n", dblock.data);
-		disk_write(free_block, dblock.data);
+		//disk_write(free_block, dblock.data);
 		//disk_read(free_block, dblock.data); // temp!
 		//printf("dblock.data after write = %s\n", dblock.data);
 		//printf("strlen(data): %ld\n", strlen(data));
-		bytes_written += strlen(data);			
+		bytes_written += strlen(dblock.data);			
 	}
 
 	return bytes_written;
