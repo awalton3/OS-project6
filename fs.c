@@ -470,7 +470,7 @@ int fs_write(int inumber, const char *data, int length, int offset)
 			return bytes_written;
 		}
 
-		char *temp = &data[bytes_written];
+		const char *temp = &data[bytes_written];
 		amount_to_write = length - bytes_written;
 
 		// Important! Clear the data block before writing to it
@@ -486,6 +486,7 @@ int fs_write(int inumber, const char *data, int length, int offset)
 			strncpy(dblock.data, temp, amount_to_write);
 			bytes_written += amount_to_write;
 		}
+
 		disk_write(free_block, dblock.data);
 		bitmap[free_block] = 0;
 
