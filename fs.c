@@ -150,7 +150,6 @@ int is_mounted() {
 }
 
 int fs_format() {
-
 	//Read in super block
 	union fs_block block;
 	disk_read(0, block.data);
@@ -192,9 +191,10 @@ int fs_mount()
 	disk_read(0, block.data);
 
 	//Check if file system present
-	// if (!check_magic(block.super.magic)){
-	// 	return 0;
-	//}
+	if (!check_magic(block.super.magic)){
+		printf("Error: Filesystem is not present on disk\n");
+		return 0;
+	}
 
 	//Check if mounted already
 	if( is_mounted() ){
