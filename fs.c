@@ -37,7 +37,7 @@ union fs_block {
 };
 
 int *bitmap;
-int mounted;
+bool mounted = false;
 
 void print_valid_blocks(int array[], int size){
 	for(int i=0; i< size; i++){
@@ -170,7 +170,6 @@ int fs_format() {
 		disk_write(i, iblock.data);
 	}
 
-	printf("Cleared inode table\n");
 	return 1;
 }
 
@@ -199,12 +198,6 @@ int fs_mount()
 	for (int j=1; j<=block.super.ninodeblocks; j++){
 		bitmap[j] = 0;
 	}
-
-	//printf("Initialized bitmap\n");
-	// for (int i = 0; i < nblocks; i++) {
-	// 	printf("%d ", bitmap[i]);
-	// }
-	// printf("\n");
 
 	union fs_block iblock;
 	union fs_block indirect_block;
