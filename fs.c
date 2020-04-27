@@ -354,9 +354,7 @@ int fs_getsize( int inumber )
 // Read from a certain inode
 int fs_read(int inumber, char *data, int length, int offset)
 {
-
 	int iblocknum = get_iblock(inumber);
-	int real_inumber = inumber;
 	inumber = get_inode_index(inumber);
 
 	// Clear data
@@ -385,38 +383,27 @@ int fs_read(int inumber, char *data, int length, int offset)
 	int amount_to_read = iblock.inode[inumber].size - offset;
 
 	while (amount_to_read > 0) {
-
-		printf("strlen(data) is %ld\n", strlen(data));
-		printf("amount_to_read is %d\n", amount_to_read);
 		bytes_read_rn = 0;
 
 		//Data container exceeds length (16384)
 		if (strlen(data) >= length) {
-			printf("About to return with %d bytes\n", bytes_read);
 			return bytes_read;
 		}
 
 		// direct block section
 		if (offset + bytes_read < direct_portion) {
-
 			current_direct_block = iblock.inode[inumber].direct[current_direct_index];
-
 			if (current_direct_block > 0) {
-
-				printf("Before disk read in direct block section\n");
 				disk_read(current_direct_block, dblock.data);
-
 				// Smaller segments
 				if (amount_to_read <= DATA_BLOCK_SIZE) {
-					printf("does not exceed block size\n");
 					bytes_read += amount_to_read;
 					bytes_read_rn = amount_to_read;
 					strncat(data, dblock.data, bytes_read_rn);
 				} else { //when amount to read exceeds block size
 					// read what we can fit in - 4kb
-					printf("exceeded block size\n");
 					bytes_read += DATA_BLOCK_SIZE;
-					bytes_read_rn =DATA_BLOCK_SIZE;
+					bytes_read_rn = DATA_BLOCK_SIZE;
 					strncat(data, dblock.data, DATA_BLOCK_SIZE);
 				}
 				amount_to_read = amount_to_read - bytes_read_rn;
@@ -427,23 +414,19 @@ int fs_read(int inumber, char *data, int length, int offset)
 
 		// indirect block section
 		else {
-
 			if (!iblock.inode[inumber].indirect){
-				printf("About to return 0\n");
 				return 0;
 			}
+			
 			if (current_indirect_index >= POINTERS_PER_BLOCK) {
 				printf("The end of the inode is reached.\n");
 				return bytes_read;
 			}
 
 			current_indirect_block = indirect_block.pointers[current_indirect_index];
-			printf("current_indirect_block: %d\n", current_indirect_block);
 
 			if (current_indirect_block > 0) {
-
 				disk_read(current_indirect_block, dblock.data);
-
 				// Smaller segments
 				if (amount_to_read <= DATA_BLOCK_SIZE) {
 					bytes_read += amount_to_read;
@@ -451,25 +434,21 @@ int fs_read(int inumber, char *data, int length, int offset)
 					strncat(data, dblock.data, bytes_read_rn);
 				} else { //when amount to read exceeds block size
 					// read what we can fit in - 4kb
-					printf("Exceeded block size\n");
 					bytes_read += DATA_BLOCK_SIZE;	
 					bytes_read_rn = DATA_BLOCK_SIZE;
 					strncat(data, dblock.data, DATA_BLOCK_SIZE);
 				}
-
 				amount_to_read = amount_to_read - bytes_read_rn;
 			}
 			current_indirect_index++;
 		}
 	}
-	//printf("total bytes_read: %d\n", bytes_read);
-	printf("At end of read file\n");
+
 	return bytes_read;
 }
 
 int fs_write(int inumber, const char *data, int length, int offset)
 {
-
 	int iblocknum = get_iblock(inumber);
 	inumber = get_inode_index(inumber); //inode_index
 
@@ -483,15 +462,13 @@ int fs_write(int inumber, const char *data, int length, int offset)
 	if (!iblock.inode[inumber].isvalid)
 		return 0; //fails
 
-	int bytes_written = 0;
 	int free_block, free_pointers_block;
 	bool direct_found;
-	char* const_data = data + offset;
-
+	int bytes_written = 0;
+	int amount_to_write;
 	
 	while (bytes_written < length) {
 		direct_found = false;
-		printf("block.super.nblocks %d\n", block.super.nblocks);
 
 		free_block = find_free_block(block.super.nblocks);
 
@@ -500,54 +477,40 @@ int fs_write(int inumber, const char *data, int length, int offset)
 			return bytes_written;
 		}
 
-		char *temp = const_data + bytes_written;	//ATTENTION: THIS IS THE LINE THAT IS BROKEN
-		printf("bytes_written is %d\n", bytes_written);
-		printf("temp* is %p\n", &temp);
-		printf("length is %d\n", length);
-		printf("offset is %d\n", offset);
-		printf("strlen(data) is %ld\n", strlen(data));
-		//printf("temp is %s\n", temp);
+		char *temp = &data[bytes_written];
+		amount_to_write = length - bytes_written;
+
+		// Important! Clear the data block before writing to it
+		for (int i = 0; i < DISK_BLOCK_SIZE; i++)
+			dblock.data[i] = 0;
 
 		//check if temp is bigger than data block size, write up to data block size only
-		if(strlen(temp) > DATA_BLOCK_SIZE){
+		if(amount_to_write > DATA_BLOCK_SIZE){
 			strncpy(dblock.data, temp, DATA_BLOCK_SIZE);
-			printf("temp in if is %s\n\n", dblock.data);
+			bytes_written += DATA_BLOCK_SIZE;
 		}
 		else{
-			strcpy(dblock.data, temp);
-			printf("temp in else is %s\n\n", dblock.data);
-
+			strncpy(dblock.data, temp, amount_to_write);
+			bytes_written += amount_to_write;
 		}
 		disk_write(free_block, dblock.data);
-		printf("free_block: %d\n", free_block);
-
-		// Look for free direct field in inode
-		//print_valid_blocks(iblock.inode[inumber].direct, POINTERS_PER_INODE);
+		bitmap[free_block] = 0;
 
 		//Searhing for an available direct pointer for free block
 		for (int i = 0; i < POINTERS_PER_INODE; i++) {
 			if (iblock.inode[inumber].direct[i] == 0) {
-				printf("Looking for free direct field in inode\n");
 				iblock.inode[inumber].direct[i] = free_block;
-				printf("Did I declare direct block? %d\n", iblock.inode[inumber].direct[i]);
 				direct_found = true;
-				printf("iblocknum is %d\n", iblocknum);
 				disk_write(iblocknum, iblock.data);
-				//TEMP REad for testing
-				//disk_read(iblocknum, iblock.data);
-				//printf("inode[inum].direct[i] %d\n", iblock.inode[inumber].direct[i]);
 				break;
 			}
 		}
-		disk_read(iblocknum, iblock.data); // This is just for testing -- seems to get right value
 
 		// Look for free indirect field in inode
 		if (!direct_found) {
-			printf("Mapping to a new indirect block\n");
 			// Map to a new indirect block
 			if (iblock.inode[inumber].indirect == 0) {
 				free_pointers_block = find_free_block(block.super.nblocks);
-				printf("free_pointers_block: %d\n", free_pointers_block);
 				iblock.inode[inumber].indirect = free_pointers_block;
 				disk_read(free_pointers_block, indirect_block.data);
 				indirect_block.pointers[0] = free_block;
@@ -560,7 +523,6 @@ int fs_write(int inumber, const char *data, int length, int offset)
 			}
 			// Look for free pointers in existing indirect pointers block
 			else {
-				printf("Look for free pointers in existing indirect pointers block\n");
 				disk_read(iblock.inode[inumber].indirect, indirect_block.data);
 				for (int i = 0; i < POINTERS_PER_BLOCK; i++) {
 					if (indirect_block.pointers[i] == 0) {
@@ -571,170 +533,10 @@ int fs_write(int inumber, const char *data, int length, int offset)
 				disk_write(iblock.inode[inumber].indirect, indirect_block.data);
 			}
 		}
-		
-		//disk_write(iblocknum, iblock.data);
 
-		bitmap[free_block] = 0;
-
-		/*for (int i = 0; i < block.super.nblocks; i++) {
-			printf("%d ", bitmap[i]);
-		}
-		printf("\n");*/
-		//printf("data + offset +bytes_writ = %s\n", data + offset + bytes_written);
-		//strcpy(dblock.data, data + offset + bytes_written);
 		iblock.inode[inumber].size += strlen(dblock.data);
-		disk_write(iblocknum, iblock.data);
-		//printf("dblock.data before write = %s\n", dblock.data);
-		//disk_write(free_block, dblock.data);
-		//disk_read(free_block, dblock.data); // temp!
-		//printf("dblock.data after write = %s\n", dblock.data);
-		//printf("strlen(data): %ld\n", strlen(data));
-		bytes_written += strlen(dblock.data);			
+		disk_write(iblocknum, iblock.data);			
 	}
 
 	return bytes_written;
 }
-/*
-int fs_write(int inumber, const char *data, int length, int offset)
-{
-
-	int iblocknum = get_iblock(inumber);
-	inumber = get_inode_index(inumber); //inode_index
-
-	union fs_block block; //super
-	union fs_block iblock; //inode block
-	union fs_block dblock; //data block
-	union fs_block indirect_block;
-	disk_read(0, block.data);
-	disk_read(iblocknum, iblock.data);
-
-	
-	// just to make sure we have a valid inode
-	if (!iblock.inode[inumber].isvalid)
-		return 0; //fails
-
-	int bytes_written = 0;
-	int free_block, free_pointers_block;
-	bool direct_found = false;
-
-	//Split data into segments of size of data block
-	int num_blocks = ceil(length/DATA_BLOCK_SIZE);
-	char* data_array[num_blocks];
-	char* current_data = "";
-	for(int i=0; i<num_blocks; i++){
-		for(int c=0; c<DATA_BLOCK_SIZE; c++){ //copy individual chars
-			strcat(current_data, data[c + i*DATA_BLOCK_SIZE]);
-		}
-		data_array[i] = current_data;
-		printf("Data array: %s\n", data_array[i]);
-		current_data = "";
-	}
-	int data_index = 0;
-	
-	while (bytes_written < length) {
-
-		printf("WRITING!\n");
-		
-		for(int i=0; i<block.super.nblocks; i++){
-			printf("%d ", bitmap[i]);
-		}
-		printf("\n");
-
-		free_block = find_free_block(block.super.nblocks-1);
-		printf("free block: %d\n", free_block);
-
-		//char *temp =  data + offset + bytes_written;
-		//printf("%s\n", temp);
-		//123, 456
-		//FOR SMALL FILES
-		if (offset < DATA_BLOCK_SIZE){
-			printf("Trying to strcpy %s\n", data_array[data_index]);
-			strcpy(dblock.data, data_array[data_index]);
-			data_index++;
-		}
-		// we moved it here because otherwise 
-		//if you need to create an indirect block, it will get the same as free block
-		
-
-		disk_write(free_block, dblock.data);
-		// makes sense to immediately update it
-		bitmap[free_block] = 0;
-
-		printf("free_block: %d\n", free_block);
-
-		if (free_block == -1) {
-			printf("The disk is full.\n");
-			return bytes_written;
-		}
-
-		// Look for free direct field in inode
-		//print_valid_blocks(iblock.inode[inumber].direct, POINTERS_PER_INODE);
-
-		//Searhing for an available direct pointer for free block
-		for (int i = 0; i < POINTERS_PER_INODE; i++) {
-			if (iblock.inode[inumber].direct[i] == 0) {
-				printf("Looking for free direct field in inode\n");
-				iblock.inode[inumber].direct[i] = free_block; //mapping
-				direct_found = true;
-				disk_write(iblocknum, iblock.data);
-				break;
-			}
-		}
-
-		//print_valid_blocks(iblock.inode[inumber].direct, POINTERS_PER_INODE);
-
-		// Look for free indirect field in inode
-		if (!direct_found) {
-			printf("Mapping to a new indirect block\n");
-			// Map to a new indirect block
-			if (iblock.inode[inumber].indirect == 0) {
-				free_pointers_block = find_free_block(block.super.nblocks);
-				// OTHERWISE: free_pointer_block == free_block
-				printf("free_pointers_block: %d\n", free_pointers_block);
-				iblock.inode[inumber].indirect = free_pointers_block;
-				disk_read(free_pointers_block, indirect_block.data);
-				indirect_block.pointers[0] = free_block;
-				// Initialize pointers block
-				for (int i = 1; i < POINTERS_PER_BLOCK; i++) {
-					indirect_block.pointers[i] = 0;
-				}
-				disk_write(free_pointers_block, indirect_block.data);
-				bitmap[free_pointers_block] = 0;
-			}
-			// Look for free pointers in existing indirect pointers block
-			else {
-				printf("Look for free pointers in existing indirect pointers block\n");
-				disk_read(iblock.inode[inumber].indirect, indirect_block.data);
-				for (int i = 0; i < POINTERS_PER_BLOCK; i++) {
-					if (indirect_block.pointers[i] == 0) {
-						indirect_block.pointers[i] = free_block;
-						break;
-					}
-				}
-				disk_write(iblock.inode[inumber].indirect, indirect_block.data);
-			}
-		}
-	
-		// write the inode block into memory
-		iblock.inode[inumber].size += length; 
-		disk_write(iblocknum, iblock.data);
-
-
-		// the inode information is not correctly updated
-
-		//bitmap[free_block] = 0;
-
-		// for (int i = 0; i < block.super.nblocks; i++) {
-		// 	printf("%d ", bitmap[i]);
-		// }
-		// printf("\n");
-
-		// strcpy(dblock.data, data + offset + bytes_written);
-		// disk_write(free_block, dblock.data);
-		//printf("strlen(data): %ld\n", strlen(data));
-		bytes_written = strlen(data); // or could just be length
-	}
-
-	return bytes_written;
-}*/
-
