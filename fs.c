@@ -139,6 +139,16 @@ void fs_debug()
 	}
 }
 
+int is_mounted() {
+	union fs_block block;
+	disk_read(0, block.data);
+
+	if (mounted == 1 || block.super.magic == FS_MAGIC)
+		return 1;
+	else
+		return 0;
+}
+
 int fs_format() {
 
 	//Read in super block
@@ -146,8 +156,10 @@ int fs_format() {
 	disk_read(0, block.data);
 
 	//Check if FS already mounted
-	// if (check_magic(block.super.magic))
-	// 	return 0;
+	if ( is_mounted() ){
+		printf("FS is already mounted, format failed\n");
+	 	return 0;
+	}
 
 	//Create superblock, prepare for mount
 	int ninodeblocks = ceil(.1 * (double)disk_size());
@@ -182,7 +194,13 @@ int fs_mount()
 	//Check if file system present
 	// if (!check_magic(block.super.magic)){
 	// 	return 0;
-	// }
+	//}
+
+	//Check if mounted already
+	if( is_mounted() ){
+		printf("Error: FS is already mounted. Mount failed\n");
+		return 0;
+	}
 
 	//Build free block bitmap
 	int nblocks = block.super.nblocks;
@@ -233,26 +251,22 @@ int fs_mount()
 
 		}
 	}
-	//mounted = 1;
+	mounted = 1;
 	return 1;
 }
 
 int fs_create()
 {
-
-	// if (!mounted) {
-	// 	printf("Error: FS not mounter\n");
-	// 	return 0;
-	// }
-
 	union fs_block block;
 	union fs_block iblock;
 	// reading in superblock
 	disk_read(0, block.data);
 
 	//Check if FS is mounted
-	if (!check_magic(block.super.magic))
+	if ( !is_mounted() ){
+		printf("Error: FS not mounted. Create failed\n");
 		return 0;
+	}
 
 	for(int i=1; i<=block.super.ninodeblocks; i++){
 		disk_read(i, iblock.data);
@@ -281,10 +295,11 @@ int fs_create()
 int fs_delete(int inumber)
 {
 
-	// if (!mounted) {
-	// 	printf("Error: FS not mounter\n");
-	// 	return 0;
-	// }
+	// Make sure it has been mounted
+	if ( !is_mounted() ) {
+	 	printf("Error: FS is not mounted. Delete failed\n");
+	 	return 0;
+	}
 
 	int iblocknum = get_iblock(inumber);
 	inumber = get_inode_index(inumber); //inode_index
@@ -292,10 +307,6 @@ int fs_delete(int inumber)
 	union fs_block iblock;
 	union fs_block indirect_block;
 	disk_read(0, block.data);
-
-	//Check if FS is mounted
-	if (!check_magic(block.super.magic))
-		return 0;
 
 	disk_read(iblocknum, iblock.data);
 	int indirect_block_num = iblock.inode[inumber].indirect;
@@ -349,7 +360,6 @@ int fs_read(int inumber, char *data, int length, int offset)
 {
 	int iblocknum = get_iblock(inumber);
 	inumber = get_inode_index(inumber);
-
 	// Clear data
 	strcpy(data, "");
 
@@ -358,8 +368,16 @@ int fs_read(int inumber, char *data, int length, int offset)
 	union fs_block dblock; //data block
 	union fs_block indirect_block;
 
+	// Check if mounted
+	if ( !is_mounted() ){
+		printf("Error: FS is not mounted. Read failed\n");
+		return 0;
+	}
+
 	disk_read(0, block.data);
 	disk_read(iblocknum, iblock.data);
+
+	// Make sure inumber is valid
 	if (!iblock.inode[inumber].isvalid || iblock.inode[inumber].size <= offset)
 		return 0; // fails
 	if (iblock.inode[inumber].indirect > 0) {
@@ -444,6 +462,12 @@ int fs_write(int inumber, const char *data, int length, int offset)
 {
 	int iblocknum = get_iblock(inumber);
 	inumber = get_inode_index(inumber); //inode_index
+
+	//Check if mounted
+	if( !is_mounted() ){
+		printf("Error: FS is not mounted. Write failed\n");
+		return 0;
+	}
 
 	union fs_block block; //super
 	union fs_block iblock; //inode block
