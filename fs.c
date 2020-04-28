@@ -77,21 +77,11 @@ int get_inode_index(int inumber) {
 void fs_debug()
 {
 
-	// if (!mounted) {
-	// 	printf("Error: FS not mounter\n");
-	// 	return;
-	// }
-
 	union fs_block block;
 	union fs_block indirect_block;
 
 	// Read in super block
 	disk_read(0,block.data);
-
-	// for (int i = 0; i < block.super.nblocks; i++) {
-	// 	printf("%d ", bitmap[i]);
-	// }
-	// printf("\n");
 
 	//int magic = block.super.magic;
 	int validSuperblock = check_magic(block.super.magic);
@@ -139,20 +129,13 @@ void fs_debug()
 	}
 }
 
-int is_mounted() {
-	if (mounted == 1)
-		return 1;
-	else
-		return 0;
-}
-
 int fs_format() {
 	//Read in super block
 	union fs_block block;
 	disk_read(0, block.data);
 
 	//Check if FS already mounted
-	if ( block.super.magic == FS_MAGIC || is_mounted() ){
+	if ( mounted ){
 		printf("FS is already mounted, format failed\n");
 	 	return 0;
 	}
@@ -194,7 +177,7 @@ int fs_mount()
 	}
 
 	//Check if mounted already
-	if( is_mounted() ){
+	if (mounted){
 		printf("Error: FS is already mounted. Mount failed\n");
 		return 0;
 	}
@@ -260,7 +243,7 @@ int fs_create()
 	disk_read(0, block.data);
 
 	//Check if FS is mounted
-	if ( !is_mounted() ){
+	if (!mounted){
 		printf("Error: FS not mounted. Create failed\n");
 		return 0;
 	}
@@ -293,7 +276,7 @@ int fs_delete(int inumber)
 {
 
 	// Make sure it has been mounted
-	if ( !is_mounted() ) {
+	if (!mounted) {
 	 	printf("Error: FS is not mounted. Delete failed\n");
 	 	return 0;
 	}
@@ -334,6 +317,7 @@ int fs_delete(int inumber)
 		iblock.inode[inumber].indirect = 0;
 	}
 	disk_write(indirect_block_num, indirect_block.data);
+	disk_write(iblocknum, iblock.data);
 
 	return 1;
 }
@@ -345,7 +329,8 @@ int fs_getsize( int inumber )
 
 	union fs_block iblock;
 	disk_read(iblocknum, iblock.data);
-
+	
+	// Fails for Invalid inodes
 	if (!iblock.inode[inode_index].isvalid || iblock.inode[inode_index].size < 0)
 		return -1;
 
@@ -366,7 +351,7 @@ int fs_read(int inumber, char *data, int length, int offset)
 	union fs_block indirect_block;
 
 	// Check if mounted
-	if ( !is_mounted() ){
+	if (!mounted){
 		printf("Error: FS is not mounted. Read failed\n");
 		return 0;
 	}
@@ -397,16 +382,18 @@ int fs_read(int inumber, char *data, int length, int offset)
 		if (strlen(data) >= length) {
 			return bytes_read;
 		}
-
+		
 		// direct block section
 		if (offset + bytes_read < direct_portion) {
 			current_direct_block = iblock.inode[inumber].direct[current_direct_index];
+			printf("Current direct block is %d\n", current_direct_block);
 			if (current_direct_block > 0) {
 				disk_read(current_direct_block, dblock.data);
+
 				// Smaller segments
 				if (amount_to_read <= DATA_BLOCK_SIZE) {
-					bytes_read += amount_to_read;
-					bytes_read_rn = amount_to_read;
+					bytes_read += strlen(dblock.data);
+					bytes_read_rn = strlen(dblock.data);
 					strncat(data, dblock.data, bytes_read_rn);
 				} else { //when amount to read exceeds block size
 					// read what we can fit in - 4kb
@@ -422,17 +409,13 @@ int fs_read(int inumber, char *data, int length, int offset)
 
 		// indirect block section
 		else {
-			if (!iblock.inode[inumber].indirect){
-				return 0;
-			}
-			
-			if (current_indirect_index >= POINTERS_PER_BLOCK) {
-				printf("The end of the inode is reached.\n");
+			// Reach end of inode or no indirect
+			if (!iblock.inode[inumber].indirect || current_indirect_index >= POINTERS_PER_BLOCK){
 				return bytes_read;
 			}
-
+			
 			current_indirect_block = indirect_block.pointers[current_indirect_index];
-
+			
 			if (current_indirect_block > 0) {
 				disk_read(current_indirect_block, dblock.data);
 				// Smaller segments
@@ -461,7 +444,7 @@ int fs_write(int inumber, const char *data, int length, int offset)
 	inumber = get_inode_index(inumber); //inode_index
 
 	//Check if mounted
-	if( !is_mounted() ){
+	if(!mounted){
 		printf("Error: FS is not mounted. Write failed\n");
 		return 0;
 	}
@@ -479,9 +462,9 @@ int fs_write(int inumber, const char *data, int length, int offset)
 	int free_block, free_pointers_block;
 	bool direct_found;
 	int bytes_written = 0;
-	int amount_to_write;
+	int amount_to_write = length;
 	
-	while (bytes_written < length) {
+	while (amount_to_write > 0) {
 		direct_found = false;
 
 		free_block = find_free_block(block.super.nblocks);
@@ -492,8 +475,7 @@ int fs_write(int inumber, const char *data, int length, int offset)
 		}
 
 		const char *temp = &data[bytes_written];
-		amount_to_write = length - bytes_written;
-
+	
 		// Important! Clear the data block before writing to it
 		for (int i = 0; i < DISK_BLOCK_SIZE; i++)
 			dblock.data[i] = 0;
@@ -510,6 +492,7 @@ int fs_write(int inumber, const char *data, int length, int offset)
 
 		disk_write(free_block, dblock.data);
 		bitmap[free_block] = 0;
+		amount_to_write = length - bytes_written;
 
 		//Searhing for an available direct pointer for free block
 		for (int i = 0; i < POINTERS_PER_INODE; i++) {
