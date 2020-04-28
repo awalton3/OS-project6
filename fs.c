@@ -147,7 +147,6 @@ int is_mounted() {
 }
 
 int fs_format() {
-
 	//Read in super block
 	union fs_block block;
 	disk_read(0, block.data);
@@ -189,9 +188,10 @@ int fs_mount()
 	disk_read(0, block.data);
 
 	//Check if file system present
-	// if (!check_magic(block.super.magic)){
-	// 	return 0;
-	//}
+	if (!check_magic(block.super.magic)){
+		printf("Error: Filesystem is not present on disk\n");
+		return 0;
+	}
 
 	//Check if mounted already
 	if( is_mounted() ){
@@ -491,7 +491,7 @@ int fs_write(int inumber, const char *data, int length, int offset)
 			return bytes_written;
 		}
 
-		char *temp = &data[bytes_written];
+		const char *temp = &data[bytes_written];
 		amount_to_write = length - bytes_written;
 
 		// Important! Clear the data block before writing to it
@@ -507,6 +507,7 @@ int fs_write(int inumber, const char *data, int length, int offset)
 			strncpy(dblock.data, temp, amount_to_write);
 			bytes_written += amount_to_write;
 		}
+
 		disk_write(free_block, dblock.data);
 		bitmap[free_block] = 0;
 
