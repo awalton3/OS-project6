@@ -37,7 +37,7 @@ union fs_block {
 };
 
 int *bitmap;
-bool mounted = false;
+int mounted = 0;
 
 void print_valid_blocks(int array[], int size){
 	for(int i=0; i< size; i++){
@@ -140,10 +140,7 @@ void fs_debug()
 }
 
 int is_mounted() {
-	union fs_block block;
-	disk_read(0, block.data);
-
-	if (mounted == 1 || block.super.magic == FS_MAGIC)
+	if (mounted == 1)
 		return 1;
 	else
 		return 0;
@@ -156,7 +153,7 @@ int fs_format() {
 	disk_read(0, block.data);
 
 	//Check if FS already mounted
-	if ( is_mounted() ){
+	if ( block.super.magic == FS_MAGIC || is_mounted() ){
 		printf("FS is already mounted, format failed\n");
 	 	return 0;
 	}
