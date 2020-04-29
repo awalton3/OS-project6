@@ -53,6 +53,10 @@ int check_magic(int magic){
 	return (magic == FS_MAGIC);
 }
 
+int inumberValid(int inumber, int ninodes) {
+	return (inumber > 0 && inumber < ninodes);
+}
+
 int get_iblock(int inumber){
 	return inumber/INODES_PER_BLOCK+1;
 }
@@ -274,7 +278,6 @@ int fs_create()
 
 int fs_delete(int inumber)
 {
-
 	// Make sure it has been mounted
 	if (!mounted) {
 	 	printf("Error: FS is not mounted. Delete failed\n");
@@ -282,11 +285,16 @@ int fs_delete(int inumber)
 	}
 
 	int iblocknum = get_iblock(inumber);
+	int real_inum = inumber;
 	inumber = get_inode_index(inumber); //inode_index
 	union fs_block block;
 	union fs_block iblock;
 	union fs_block indirect_block;
 	disk_read(0, block.data);
+
+	if (!inumberValid(real_inum,block.super.ninodes)) {
+		return 0;
+	}
 
 	disk_read(iblocknum, iblock.data);
 	int indirect_block_num = iblock.inode[inumber].indirect;
@@ -327,9 +335,15 @@ int fs_getsize( int inumber )
 	int iblocknum = get_iblock(inumber);
 	int inode_index = get_inode_index(inumber);
 
+	union fs_block block;
+	disk_read(0, block.data);
+	if (!inumberValid(inumber,block.super.ninodes)) {
+		return -1;
+	}
+
 	union fs_block iblock;
 	disk_read(iblocknum, iblock.data);
-	
+
 	// Fails for Invalid inodes
 	if (!iblock.inode[inode_index].isvalid || iblock.inode[inode_index].size < 0)
 		return -1;
@@ -340,12 +354,19 @@ int fs_getsize( int inumber )
 // Read from a certain inode
 int fs_read(int inumber, char *data, int length, int offset)
 {
+	union fs_block block; //super
+	disk_read(0, block.data);
+
+	if (!inumberValid(inumber,block.super.ninodes)) {
+		printf("inumber is invalid\n");
+		return 0;
+	}
+
 	int iblocknum = get_iblock(inumber);
 	inumber = get_inode_index(inumber);
 	// Clear data
 	strcpy(data, "");
 
-	union fs_block block; //super
 	union fs_block iblock; //inode block
 	union fs_block dblock; //data block
 	union fs_block indirect_block;
@@ -356,7 +377,6 @@ int fs_read(int inumber, char *data, int length, int offset)
 		return 0;
 	}
 
-	disk_read(0, block.data);
 	disk_read(iblocknum, iblock.data);
 
 	// Make sure inumber is valid
@@ -382,7 +402,7 @@ int fs_read(int inumber, char *data, int length, int offset)
 		if (strlen(data) >= length) {
 			return bytes_read;
 		}
-		
+
 		// direct block section
 		if (offset + bytes_read < direct_portion) {
 			current_direct_block = iblock.inode[inumber].direct[current_direct_index];
@@ -413,9 +433,9 @@ int fs_read(int inumber, char *data, int length, int offset)
 			if (!iblock.inode[inumber].indirect || current_indirect_index >= POINTERS_PER_BLOCK){
 				return bytes_read;
 			}
-			
+
 			current_indirect_block = indirect_block.pointers[current_indirect_index];
-			
+
 			if (current_indirect_block > 0) {
 				disk_read(current_indirect_block, dblock.data);
 				// Smaller segments
@@ -425,7 +445,7 @@ int fs_read(int inumber, char *data, int length, int offset)
 					strncat(data, dblock.data, bytes_read_rn);
 				} else { //when amount to read exceeds block size
 					// read what we can fit in - 4kb
-					bytes_read += DATA_BLOCK_SIZE;	
+					bytes_read += DATA_BLOCK_SIZE;
 					bytes_read_rn = DATA_BLOCK_SIZE;
 					strncat(data, dblock.data, DATA_BLOCK_SIZE);
 				}
@@ -440,6 +460,14 @@ int fs_read(int inumber, char *data, int length, int offset)
 
 int fs_write(int inumber, const char *data, int length, int offset)
 {
+	union fs_block block; //super
+	disk_read(0, block.data);
+
+	if (!inumberValid(inumber,block.super.ninodes)) {
+		printf("inumber is invalid\n");
+		return 0;
+	}
+
 	int iblocknum = get_iblock(inumber);
 	inumber = get_inode_index(inumber); //inode_index
 
@@ -449,11 +477,11 @@ int fs_write(int inumber, const char *data, int length, int offset)
 		return 0;
 	}
 
-	union fs_block block; //super
+	printf("invalid!\n");
+
 	union fs_block iblock; //inode block
 	union fs_block dblock; //data block
 	union fs_block indirect_block;
-	disk_read(0, block.data);
 	disk_read(iblocknum, iblock.data);
 
 	if (!iblock.inode[inumber].isvalid)
@@ -463,7 +491,7 @@ int fs_write(int inumber, const char *data, int length, int offset)
 	bool direct_found;
 	int bytes_written = 0;
 	int amount_to_write = length;
-	
+
 	while (amount_to_write > 0) {
 		direct_found = false;
 
@@ -475,7 +503,7 @@ int fs_write(int inumber, const char *data, int length, int offset)
 		}
 
 		const char *temp = &data[bytes_written];
-	
+
 		// Important! Clear the data block before writing to it
 		for (int i = 0; i < DISK_BLOCK_SIZE; i++)
 			dblock.data[i] = 0;
@@ -533,7 +561,7 @@ int fs_write(int inumber, const char *data, int length, int offset)
 		}
 
 		iblock.inode[inumber].size += strlen(dblock.data);
-		disk_write(iblocknum, iblock.data);			
+		disk_write(iblocknum, iblock.data);
 	}
 
 	return bytes_written;
